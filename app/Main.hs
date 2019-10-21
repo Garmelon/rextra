@@ -1,6 +1,6 @@
 module Main where
 
-import Lib
+import Rextra.Rextra (rextra)
 
 main :: IO ()
-main = someFunc
+main = rextra
