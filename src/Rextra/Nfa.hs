@@ -6,10 +6,10 @@ module Rextra.Nfa (
   , nfa
   , nfa'
   -- ** Using
-  , nfaStates
-  , nfaEntryState
-  , nfaExitStates
-  , nfaTransition
+  , stateMap
+  , entryState
+  , exitStates
+  , transition
   -- ** Transitions
   , TransitionCondition
   , specialStates
@@ -49,9 +49,9 @@ type State s t = [(TransitionCondition t, s)]
 -- It has one entry state and any number of exit states, which can be
 -- interpreted as accepting states when the NFA is run.
 data Nfa s t = Nfa
-  { nfaStates     :: Map.Map s (State s t)
-  , nfaEntryState :: s
-  , nfaExitStates :: Set.Set s
+  { stateMap   :: Map.Map s (State s t)
+  , entryState :: s
+  , exitStates :: Set.Set s
   }
 
 {-
@@ -61,11 +61,11 @@ data Nfa s t = Nfa
 integrityCheck :: (Ord s) => Nfa s t -> Bool
 integrityCheck nfa =
   let referencedStates = Set.unions
-        [ Set.singleton (nfaEntryState nfa)
-        , nfaExitStates nfa
-        , Set.fromList . map snd . concat . Map.elems $ nfaStates nfa
+        [ Set.singleton (entryState nfa)
+        , exitStates nfa
+        , Set.fromList . map snd . concat . Map.elems $ stateMap nfa
         ]
-  in  referencedStates `Set.isSubsetOf` Map.keysSet (nfaStates nfa)
+  in  referencedStates `Set.isSubsetOf` Map.keysSet (stateMap nfa)
 
 -- | Construct an 'Nfa' from all its components.
 --
@@ -78,8 +78,8 @@ nfa :: (Ord s)
     -> s                     -- ^ The entry state (starting state)
     -> Set.Set s             -- ^ The exit states
     -> Maybe (Nfa s t)       -- ^ The 'Nfa', if the data didn't show any inconsistencies
-nfa states entryState exitStates =
-  let myNfa = Nfa{nfaStates=states, nfaEntryState=entryState, nfaExitStates=exitStates}
+nfa stateMap entryState exitStates =
+  let myNfa = Nfa{stateMap=stateMap, entryState=entryState, exitStates=exitStates}
   in  if integrityCheck myNfa then Just myNfa else Nothing
 
 -- | A version of 'nfa' using argument formats that should be easier to work with.
@@ -91,7 +91,7 @@ nfa' states entryState exitStates = nfa (Map.fromList states) entryState (Set.fr
  -}
 
 getState :: (Ord s) => Nfa s t -> s -> State s t
-getState nfa s = nfaStates nfa Map.! s
+getState nfa s = stateMap nfa Map.! s
 
 -- | Starting from a state, find all the states that it can transition to with token @t@.
 nextStates :: (Ord s, Ord t) => State s t -> t -> Set.Set s
@@ -106,5 +106,5 @@ nextStates state t = Set.fromList . map snd . filter (\(cond, _) -> cond `accept
 -- __Warning__: This function does /not/ check whether the states
 -- actually exist in the automaton, and it crashes if an invalid state
 -- is used.
-nfaTransition :: (Ord s, Ord t) => Nfa s t -> Set.Set s -> t -> Set.Set s
-nfaTransition nfa ss t = foldMap (\s -> nextStates (getState nfa s) t) ss
+transition :: (Ord s, Ord t) => Nfa s t -> Set.Set s -> t -> Set.Set s
+transition nfa ss t = foldMap (\s -> nextStates (getState nfa s) t) ss
