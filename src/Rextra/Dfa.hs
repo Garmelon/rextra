@@ -5,9 +5,11 @@ module Rextra.Dfa
   , stateMap
   , entryState
   , transition
+  , execute
   , State(..)
   ) where
 
+import           Data.List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 
@@ -15,12 +17,12 @@ data State s t = State
   { transitions       :: Map.Map t s
   , defaultTransition :: s
   , accepting         :: Bool
-  }
+  } deriving (Show)
 
 data Dfa s t = Dfa
   { stateMap   :: Map.Map s (State s t)
   , entryState :: s
-  }
+  } deriving (Show)
 
 {-
  - Constructing a DFA
@@ -55,3 +57,8 @@ transition dfa s t =
   in  case transitions state Map.!? t of
         (Just nextState) -> nextState
         Nothing          -> defaultTransition state
+
+execute :: (Ord s, Ord t) => Dfa s t -> [t] -> Bool
+execute dfa tokens =
+  let finalState = foldl' (transition dfa) (entryState dfa) tokens
+  in  accepting $ getState dfa finalState

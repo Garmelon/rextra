@@ -10,12 +10,14 @@ module Rextra.Nfa (
   , entryState
   , exitStates
   , transition
+  , execute
   -- ** Transitions
-  , TransitionCondition
+  , TransitionCondition(..)
   , specialStates
   , accepts
   ) where
 
+import           Data.List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 
@@ -28,6 +30,7 @@ import qualified Data.Set as Set
 data TransitionCondition t
   = Only (Set.Set t)
   | AllExcept (Set.Set t)
+  deriving (Show)
 
 -- | The states which are treated differently from the default by the
 -- 'TransitionCondition'.
@@ -52,7 +55,7 @@ data Nfa s t = Nfa
   { stateMap   :: Map.Map s (State s t)
   , entryState :: s
   , exitStates :: Set.Set s
-  }
+  } deriving (Show)
 
 {-
  - Constructing a NFA
@@ -108,3 +111,9 @@ nextStates state t = Set.fromList . map snd . filter (\(cond, _) -> cond `accept
 -- is used.
 transition :: (Ord s, Ord t) => Nfa s t -> Set.Set s -> t -> Set.Set s
 transition nfa ss t = foldMap (\s -> nextStates (getState nfa s) t) ss
+
+execute :: (Ord s, Ord t) => Nfa s t -> [t] -> Bool
+execute nfa tokens =
+  let entryStates = Set.singleton $ entryState nfa
+      finalStates = foldl' (transition nfa) entryStates tokens
+  in  not $ Set.disjoint finalStates (exitStates nfa)
