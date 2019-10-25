@@ -5,21 +5,48 @@ module Rextra.Nfa (
   -- ** Constructing
   , nfa
   , nfa'
-  -- ** Using
+  -- ** Properties
   , stateMap
   , entryState
   , exitStates
+  -- ** Executing
+  , NdState
+  , entryNdState
+  , getNdState
+  , accepting
   , transition
+  , defaultTransition
   , execute
-  -- ** Transitions
+  -- *** Transition conditions
   , TransitionCondition(..)
-  , specialStates
+  , specialTokens
   , accepts
   ) where
 
 import           Data.List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
+
+{-
+ - Types
+ -}
+
+-- | A type representing a nondeterministic finite automaton.
+--
+-- It has one entry state and any number of exit states, which can be
+-- interpreted as accepting states when the NFA is run.
+data Nfa s t = Nfa
+  { stateMap   :: Map.Map s (State s t)
+  , entryState :: s
+  , exitStates :: Set.Set s
+  } deriving (Show)
+
+getState :: (Ord s) => Nfa s t -> s -> State s t
+getState nfa s = stateMap nfa Map.! s
+
+-- | A state consists of the transitions to other states, and the
+-- conditions under which those transitions happen.
+type State s t = [(TransitionCondition t, s)]
 
 -- | This condition determines which tokens a state transition applies to.
 --
@@ -32,33 +59,19 @@ data TransitionCondition t
   | AllExcept (Set.Set t)
   deriving (Show)
 
--- | The states which are treated differently from the default by the
+-- | The tokens which are treated differently from the default by the
 -- 'TransitionCondition'.
-specialStates :: TransitionCondition t -> Set.Set t
-specialStates (Only s)      = s
-specialStates (AllExcept s) = s
+specialTokens :: TransitionCondition t -> Set.Set t
+specialTokens (Only tSet)      = tSet
+specialTokens (AllExcept tSet) = tSet
 
 -- | Whether the condition holds true for a token.
 accepts :: (Ord t) => TransitionCondition t -> t -> Bool
 accepts (Only s)      t = Set.member t s
 accepts (AllExcept s) t = Set.notMember t s
 
--- | A state consists of the transitions to other states, and the
--- conditions under which those transitions happen.
-type State s t = [(TransitionCondition t, s)]
-
--- | A type representing a nondeterministic finite automaton.
---
--- It has one entry state and any number of exit states, which can be
--- interpreted as accepting states when the NFA is run.
-data Nfa s t = Nfa
-  { stateMap   :: Map.Map s (State s t)
-  , entryState :: s
-  , exitStates :: Set.Set s
-  } deriving (Show)
-
 {-
- - Constructing a NFA
+ - Constructing an NFA
  -}
 
 integrityCheck :: (Ord s) => Nfa s t -> Bool
@@ -93,8 +106,19 @@ nfa' states entryState exitStates = nfa (Map.fromList states) entryState (Set.fr
  - "Executing" a NFA
  -}
 
-getState :: (Ord s) => Nfa s t -> s -> State s t
-getState nfa s = stateMap nfa Map.! s
+-- | The nondeterministic (nd) current state of an NFA.
+--
+-- This type is used when executing a NFA.
+type NdState s = Set.Set s
+
+entryNdState :: Nfa s t -> NdState s
+entryNdState = Set.singleton . entryState
+
+getNdState :: (Ord s) => Nfa s t -> NdState s -> [State s t]
+getNdState nfa ns = map (getState nfa) $ Set.toList ns
+
+accepting :: (Ord s) => Nfa s t -> NdState s -> Bool
+accepting nfa ns = not $ Set.disjoint ns (exitStates nfa)
 
 -- | Starting from a state, find all the states that it can transition to with token @t@.
 nextStates :: (Ord s, Ord t) => State s t -> t -> Set.Set s
@@ -109,11 +133,21 @@ nextStates state t = Set.fromList . map snd . filter (\(cond, _) -> cond `accept
 -- __Warning__: This function does /not/ check whether the states
 -- actually exist in the automaton, and it crashes if an invalid state
 -- is used.
-transition :: (Ord s, Ord t) => Nfa s t -> Set.Set s -> t -> Set.Set s
-transition nfa ss t = foldMap (\s -> nextStates (getState nfa s) t) ss
+transition :: (Ord s, Ord t) => Nfa s t -> NdState s -> t -> NdState s
+transition nfa ns t = foldMap (\s -> nextStates s t) $ getNdState nfa ns
+
+defaultTransition :: (Ord s) => Nfa s t -> NdState s -> NdState s
+defaultTransition nfa ns = Set.fromList
+                         . map snd
+                         . filter (isAllExcept . fst)
+                         . concat
+                         $ getNdState nfa ns
+  where
+    isAllExcept :: TransitionCondition t -> Bool
+    isAllExcept (AllExcept _) = True
+    isAllExcept _             = False
 
 execute :: (Ord s, Ord t) => Nfa s t -> [t] -> Bool
 execute nfa tokens =
-  let entryStates = Set.singleton $ entryState nfa
-      finalStates = foldl' (transition nfa) entryStates tokens
-  in  not $ Set.disjoint finalStates (exitStates nfa)
+  let finalNdState = foldl' (transition nfa) (entryNdState nfa) tokens
+  in  accepting nfa finalNdState

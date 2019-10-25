@@ -1,5 +1,6 @@
 module Rextra.Dfa
   ( Dfa
+  , StateMap
   , dfa
   , dfa'
   , stateMap
@@ -19,8 +20,10 @@ data State s t = State
   , accepting         :: Bool
   } deriving (Show)
 
+type StateMap s t = Map.Map s (State s t)
+
 data Dfa s t = Dfa
-  { stateMap   :: Map.Map s (State s t)
+  { stateMap   :: StateMap s t
   , entryState :: s
   } deriving (Show)
 
@@ -36,7 +39,7 @@ integrityCheck dfa =
       referencedStates = Set.fromList $ concat [[entryState dfa], transitionStates, defaultTransitionStates]
   in  referencedStates `Set.isSubsetOf` Map.keysSet (stateMap dfa)
 
-dfa :: (Ord s) => Map.Map s (State s t) -> s -> Maybe (Dfa s t)
+dfa :: (Ord s) => StateMap s t -> s -> Maybe (Dfa s t)
 dfa stateMap entryState =
   let myDfa = Dfa{stateMap=stateMap, entryState=entryState}
   in  if integrityCheck myDfa then Just myDfa else Nothing
