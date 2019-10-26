@@ -1,18 +1,35 @@
-module Rextra.Dfa
-  ( Dfa
+module Rextra.Dfa (
+  -- * Deterministic Finite Automaton
+    Dfa
+  , State(..)
   , StateMap
+  -- ** Constructing
   , dfa
   , dfa'
+  -- ** Properties
   , stateMap
   , entryState
+  -- ** Executing
   , transition
   , execute
-  , State(..)
   ) where
 
 import           Data.List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
+import           Rextra.Util
+
+{-
+ - Types
+ -}
+
+data Dfa s t = Dfa
+  { stateMap   :: StateMap s t
+  , entryState :: s
+  } deriving (Show)
+
+getState :: (Ord s) => Dfa s t -> s -> State s t
+getState dfa s = stateMap dfa Map.! s
 
 data State s t = State
   { transitions       :: Map.Map t s
@@ -22,13 +39,8 @@ data State s t = State
 
 type StateMap s t = Map.Map s (State s t)
 
-data Dfa s t = Dfa
-  { stateMap   :: StateMap s t
-  , entryState :: s
-  } deriving (Show)
-
 {-
- - Constructing a DFA
+ - Constructing
  -}
 
 integrityCheck :: (Ord s) => Dfa s t -> Bool
@@ -48,11 +60,8 @@ dfa' :: (Ord s) => [(s, State s t)] -> s -> Maybe (Dfa s t)
 dfa' states entryState = dfa (Map.fromList states) entryState
 
 {-
- - "Executing" a DFA
+ - Executing
  -}
-
-getState :: (Ord s) => Dfa s t -> s -> State s t
-getState dfa s = stateMap dfa Map.! s
 
 transition :: (Ord s, Ord t) => Dfa s t -> s -> t -> s
 transition dfa s t =

@@ -37,7 +37,9 @@ dfaStateToNfaState s =
                        . groupByFirst
                        . map swap
                        $ Map.assocs transitionMap
-  in  defaultTransition : otherTransitions
+  in  Nfa.State { Nfa.transitions        = defaultTransition : otherTransitions
+                , Nfa.epsilonTransitions = Set.empty
+                }
 
 dfaToNfa :: (Ord s, Ord t) => Dfa.Dfa s t -> Nfa.Nfa s t
 dfaToNfa dfa =
@@ -52,7 +54,7 @@ dfaToNfa dfa =
  -}
 
 allSpecialTokens :: (Ord t) => [Nfa.State s t] -> Set.Set t
-allSpecialTokens = foldMap (foldMap (Nfa.specialTokens . fst))
+allSpecialTokens = foldMap (foldMap (Nfa.specialTokens . fst) . Nfa.transitions)
 
 allNextStates :: (Ord s) => Dfa.State s t -> Set.Set s
 allNextStates s =
@@ -62,7 +64,7 @@ allNextStates s =
 ndStateToDfaState :: (Ord s, Ord t) => Nfa.Nfa s t -> Nfa.NdState s -> Dfa.State (Nfa.NdState s) t
 ndStateToDfaState nfa ns =
   let specialTokens = allSpecialTokens $ Nfa.getNdState nfa ns
-  in  Dfa.State { Dfa.transitions       = Map.fromSet (Nfa.transition nfa ns) specialTokens
+  in  Dfa.State { Dfa.transitions       = Map.fromSet (\t -> Nfa.transition nfa t ns) specialTokens
                 , Dfa.defaultTransition = Nfa.defaultTransition nfa ns
                 , Dfa.accepting         = Nfa.accepting nfa ns
                 }
