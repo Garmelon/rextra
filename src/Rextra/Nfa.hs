@@ -7,6 +7,8 @@ module Rextra.Nfa (
   , specialTokens
   , accepts
   -- ** Constructing
+  , only
+  , allExcept
   , nfa
   , nfa'
   -- ** Properties
@@ -105,9 +107,20 @@ nfa stateMap entryState exitStates =
   let myNfa = Nfa{stateMap=stateMap, entryState=entryState, exitStates=exitStates}
   in  if integrityCheck myNfa then Just myNfa else Nothing
 
--- | A version of 'nfa' using argument formats that should be easier to work with.
-nfa' :: (Ord s) => [(s, State s t)] -> s -> [s] -> Maybe (Nfa s t)
-nfa' states entryState exitStates = nfa (Map.fromList states) entryState (Set.fromList exitStates)
+only :: (Ord t) => [t] -> TransitionCondition t
+only = Only . Set.fromList
+
+allExcept :: (Ord t) => [t] -> TransitionCondition t
+allExcept = AllExcept . Set.fromList
+
+nfa' :: (Ord s)
+     => [(s, [(TransitionCondition t, s)], [s])]
+     -> s
+     -> [s]
+     -> Maybe (Nfa s t)
+nfa' states entryState exitStates =
+  let stateList = map (\(s, ts, et) -> (s, State ts (Set.fromList et))) states
+  in  nfa (Map.fromList stateList) entryState (Set.fromList exitStates)
 
 {-
  - Executing

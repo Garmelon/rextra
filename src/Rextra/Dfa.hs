@@ -56,8 +56,10 @@ dfa stateMap entryState =
   let myDfa = Dfa{stateMap=stateMap, entryState=entryState}
   in  if integrityCheck myDfa then Just myDfa else Nothing
 
-dfa' :: (Ord s) => [(s, State s t)] -> s -> Maybe (Dfa s t)
-dfa' states entryState = dfa (Map.fromList states) entryState
+dfa' :: (Ord s, Ord t) => [(s, [(t, s)], s, Bool)] -> s -> Maybe (Dfa s t)
+dfa' states entryState =
+  let stateList = map (\(s, ts, dt, a) -> (s, State (Map.fromList ts) dt a)) states
+  in  dfa (Map.fromList stateList) entryState
 
 {-
  - Executing
