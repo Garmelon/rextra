@@ -45,10 +45,10 @@ dfaStateToNfaState s =
 dfaToNfa :: (Ord s, Ord t) => Dfa.Dfa s t -> Nfa.Nfa s t
 dfaToNfa dfa =
   let stateMap = Dfa.stateMap dfa
-      exitingStates = map fst . filter (\(s, state) -> Dfa.accepting state) $ Map.assocs stateMap
+      exitStates = Dfa.exitStates dfa
       nfaStateMap = Map.map dfaStateToNfaState stateMap
   -- The NFA was created from a valid DFA, so it will be valid too.
-  in  fromJust $ Nfa.nfa nfaStateMap (Dfa.entryState dfa) (Set.fromList exitingStates)
+  in  fromJust $ Nfa.nfa nfaStateMap (Dfa.entryState dfa) exitStates
 
 {-
  - Converting a NFA to a DFA

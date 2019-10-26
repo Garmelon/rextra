@@ -9,6 +9,7 @@ module Rextra.Dfa (
   -- ** Properties
   , stateMap
   , entryState
+  , exitStates
   -- ** Executing
   , transition
   , execute
@@ -33,6 +34,13 @@ data Dfa s t = Dfa
 
 getState :: (Ord s) => Dfa s t -> s -> State s t
 getState dfa s = stateMap dfa Map.! s
+
+exitStates :: (Ord s) => Dfa s t -> Set.Set s
+exitStates dfa = Set.fromList
+               . map fst
+               . filter (accepting . snd)
+               . Map.assocs
+               $ stateMap dfa
 
 data State s t = State
   { transitions       :: Map.Map t s

@@ -23,6 +23,8 @@ dependencies:
 - base >= 4.7 && < 5
 - transformers >= 0.5.6 && < 0.6
 - containers >= 0.6 && < 0.7
+- graphviz >= 2999.20 && < 2999.21
+- fgl >= 5.7 && < 5.8
 # algebraic-graphs >= 0.4 && < 0.5
 
 library:

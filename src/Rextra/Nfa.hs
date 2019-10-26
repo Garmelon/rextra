@@ -34,6 +34,7 @@ module Rextra.Nfa (
 import           Data.List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
+
 import           Rextra.Util
 
 {-
