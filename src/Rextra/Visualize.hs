@@ -2,6 +2,7 @@
 
 module Rextra.Visualize where
 
+import           Control.Monad
 import           Data.Graph.Inductive
 import           Data.GraphViz
 import           Data.List
@@ -12,6 +13,15 @@ import qualified Rextra.Dfa as Dfa
 import qualified Rextra.Nfa as Nfa
 import           Rextra.Util
 
+showDot :: DotGraph Node -> IO ()
+showDot dg = runGraphvizCanvas' dg Gtk
+
+saveDot :: GraphvizOutput -> String -> DotGraph Node -> IO ()
+saveDot format path dg = void $ runGraphviz dg format path
+
+saveDotAsPng :: String -> DotGraph Node -> IO ()
+saveDotAsPng = saveDot Png
+
 {-
  - Visualizing DFAs
  -}
@@ -19,7 +29,7 @@ import           Rextra.Util
 convertDfaState :: (Int, Dfa.State Int Char) -> [LEdge String]
 convertDfaState (from, state) =
   let normalEdges = map (\(t, to) -> (from, to, [t])) . Map.assocs $ Dfa.transitions state
-      defaultEdge = (from, Dfa.defaultTransition state, "default")
+      defaultEdge = (from, Dfa.defaultTransition state, "**")
   in  defaultEdge : normalEdges
 
 dfaToGraph :: Dfa.Dfa Int Char -> Gr () String
@@ -38,8 +48,8 @@ dfaAttributes dfa =
       fmtEdge (n1, n2, l) = [toLabel l]
   in  nonClusteredParams { fmtNode = fmtNode, fmtEdge = fmtEdge }
 
-showDfa :: Dfa.Dfa Int Char -> IO ()
-showDfa dfa = runGraphvizCanvas' (graphToDot (dfaAttributes dfa) (dfaToGraph dfa)) Gtk
+dfaToDot :: Dfa.Dfa Int Char -> DotGraph Node
+dfaToDot dfa = graphToDot (dfaAttributes dfa) (dfaToGraph dfa)
 
 {-
  - Visualizing NFAs
@@ -81,5 +91,5 @@ nfaAttributes nfa =
       fmtEdge (n1, n2, l) = [toLabel l]
   in  nonClusteredParams { fmtNode = fmtNode, fmtEdge = fmtEdge }
 
-showNfa :: Nfa.Nfa Int Char -> IO ()
-showNfa nfa = runGraphvizCanvas' (graphToDot (nfaAttributes nfa) (nfaToGraph nfa)) Gtk
+nfaToDot :: Nfa.Nfa Int Char -> DotGraph Node
+nfaToDot nfa = graphToDot (nfaAttributes nfa) (nfaToGraph nfa)
