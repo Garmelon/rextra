@@ -189,7 +189,7 @@ accepting nfa ns = not $ Set.disjoint ns (exitStates nfa)
 
 execute :: (Ord s, Ord t) => Nfa s t -> [t] -> Bool
 execute nfa tokens =
-  let finalNdState = foldr (transition nfa) (entryNdState nfa) tokens
+  let finalNdState = foldl' (flip $ transition nfa) (entryNdState nfa) tokens
   in  accepting nfa finalNdState
 
 {-
