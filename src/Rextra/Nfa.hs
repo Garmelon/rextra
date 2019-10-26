@@ -1,3 +1,5 @@
+{-# LANGUAGE TupleSections #-}
+
 module Rextra.Nfa (
   -- * Nondeterministic Finite Automaton
     Nfa
@@ -25,6 +27,8 @@ module Rextra.Nfa (
   , entryNdState
   , accepting
   , execute
+  -- ** Renaming
+  , rename
   ) where
 
 import           Data.List
@@ -186,3 +190,29 @@ execute :: (Ord s, Ord t) => Nfa s t -> [t] -> Bool
 execute nfa tokens =
   let finalNdState = foldr (transition nfa) (entryNdState nfa) tokens
   in  accepting nfa finalNdState
+
+{-
+ - Renaming
+ -}
+
+renameTransition :: (Ord s) => (TransitionCondition t, s) -> Rename s (TransitionCondition t, Int)
+renameTransition (cond, s) = (cond,) <$> getName s
+
+renameState :: (Ord s) => State s t -> Rename s (State Int t)
+renameState state = do
+  newTransitions <- mapM renameTransition $ transitions state
+  newEpsilonTransitions <- renameSet getName $ epsilonTransitions state
+  pure $ State { transitions = newTransitions, epsilonTransitions = newEpsilonTransitions }
+
+renameAssoc :: (Ord s, Ord t) => (s, State s t) -> Rename s (Int, State Int t)
+renameAssoc (name, state) = (,) <$> getName name <*> renameState state
+
+rename :: (Ord s, Ord t) => Nfa s t -> Nfa Int t
+rename nfa = doRename $ do
+  newStateMap <- renameMap renameAssoc $ stateMap nfa
+  newEntryState <- getName $ entryState nfa
+  newExitStates <- renameSet getName $ exitStates nfa
+  pure $ Nfa { stateMap   = newStateMap
+             , entryState = newEntryState
+             , exitStates = newExitStates
+             }

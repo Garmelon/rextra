@@ -9,6 +9,7 @@ import qualified Data.Map.Strict as Map
 import           Data.Maybe
 import qualified Data.Set as Set
 import           Data.Tuple
+
 import qualified Rextra.Dfa as Dfa
 import qualified Rextra.Nfa as Nfa
 

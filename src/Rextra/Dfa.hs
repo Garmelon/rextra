@@ -12,11 +12,14 @@ module Rextra.Dfa (
   -- ** Executing
   , transition
   , execute
+  -- ** Renaming
+  , rename
   ) where
 
 import           Data.List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
+
 import           Rextra.Util
 
 {-
@@ -76,3 +79,25 @@ execute :: (Ord s, Ord t) => Dfa s t -> [t] -> Bool
 execute dfa tokens =
   let finalState = foldl' (transition dfa) (entryState dfa) tokens
   in  accepting $ getState dfa finalState
+
+{-
+ - Renaming
+ -}
+
+renameState :: (Ord s, Ord t) => State s t -> Rename s (State Int t)
+renameState state = do
+  newTransitions <- renameValues getName $ transitions state
+  newDefaultTransition <- getName $ defaultTransition state
+  pure $ State { transitions       = newTransitions
+               , defaultTransition = newDefaultTransition
+               , accepting         = accepting state
+               }
+
+renameAssoc :: (Ord s, Ord t) => (s, State s t) -> Rename s (Int, State Int t)
+renameAssoc (name, state) = (,) <$> getName name <*> renameState state
+
+rename :: (Ord s, Ord t) => Dfa s t -> Dfa Int t
+rename dfa = doRename $ do
+  newStateMap <- renameMap renameAssoc $ stateMap dfa
+  newEntryState <- getName $ entryState dfa
+  pure $ Dfa { stateMap = newStateMap, entryState = newEntryState }
