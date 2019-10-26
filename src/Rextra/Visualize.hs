@@ -1,6 +1,12 @@
 {-# LANGUAGE TupleSections #-}
 
-module Rextra.Visualize where
+module Rextra.Visualize
+  ( showDot
+  , saveDot
+  , saveDotAsPng
+  , dfaToDot
+  , nfaToDot
+  ) where
 
 import           Control.Monad
 import           Data.Graph.Inductive
@@ -32,20 +38,30 @@ convertDfaState (from, state) =
       defaultEdge = (from, Dfa.defaultTransition state, "**")
   in  defaultEdge : normalEdges
 
+-- | Convert a 'Dfa.Dfa' to a 'Gr' graph.
+--
+-- This function assumes that no node has a negative name.
 dfaToGraph :: Dfa.Dfa Int Char -> Gr () String
 dfaToGraph dfa =
-  let stateMap = Dfa.stateMap dfa
-      nodes    = map (\k -> (k, ())) $ Map.keys stateMap
-      edges    = concatMap convertDfaState $ Map.assocs stateMap
-  in  mkGraph nodes edges
+  let stateMap  = Dfa.stateMap dfa
+      startNode = (-1, ())
+      startEdge = (-1, Dfa.entryState dfa, "")
+      nodes     = map (\k -> (k, ())) $ Map.keys stateMap
+      edges     = concatMap convertDfaState $ Map.assocs stateMap
+  in  mkGraph (startNode : nodes) (startEdge : edges)
 
 dfaAttributes :: Labellable el => Dfa.Dfa Int t -> GraphvizParams Int nl el () nl
 dfaAttributes dfa =
   let exitStates = Dfa.exitStates dfa
-      fmtNode (n, l) = if n `Set.member` exitStates
-        then [shape DoubleCircle]
-        else [shape Circle]
-      fmtEdge (n1, n2, l) = [toLabel l]
+
+      fmtNode (-1, _) = [style invis] -- Start node
+      fmtNode ( n, _)
+        | n `Set.member` exitStates = [shape DoubleCircle]
+        | otherwise                 = [shape Circle]
+
+      fmtEdge (-1, _, _) = [] -- Start edge
+      fmtEdge ( _, _, l) = [toLabel l]
+
   in  nonClusteredParams { fmtNode = fmtNode, fmtEdge = fmtEdge }
 
 dfaToDot :: Dfa.Dfa Int Char -> DotGraph Node
@@ -74,10 +90,12 @@ convertNfaState (from, state) =
 
 nfaToGraph :: Nfa.Nfa Int Char -> Gr () String
 nfaToGraph nfa =
-  let stateMap = Nfa.stateMap nfa
-      nodes    = map (\k -> (k, ())) $ Map.keys stateMap
-      edges    = concatMap convertNfaState $ Map.assocs stateMap
-  in  mkGraph nodes edges
+  let stateMap  = Nfa.stateMap nfa
+      startNode = (-1, ())
+      startEdge = (-1, Nfa.entryState nfa, "")
+      nodes     = map (\k -> (k, ())) $ Map.keys stateMap
+      edges     = concatMap convertNfaState $ Map.assocs stateMap
+  in  mkGraph (startNode : nodes) (startEdge : edges)
 
 anyNfaToGraph :: (Ord s) => Nfa.Nfa s Char -> Gr () String
 anyNfaToGraph = nfaToGraph . Nfa.rename
@@ -85,10 +103,15 @@ anyNfaToGraph = nfaToGraph . Nfa.rename
 nfaAttributes :: Labellable el => Nfa.Nfa Int t -> GraphvizParams Int nl el () nl
 nfaAttributes nfa =
   let exitStates = Nfa.exitStates nfa
-      fmtNode (n, l) = if n `Set.member` exitStates
-        then [shape DoubleCircle]
-        else [shape Circle]
-      fmtEdge (n1, n2, l) = [toLabel l]
+
+      fmtNode (-1, _) = [style invis] -- Start node
+      fmtNode ( n, _)
+        | n `Set.member` exitStates = [shape DoubleCircle]
+        | otherwise                 = [shape Circle]
+
+      fmtEdge (-1, _, _) = [] -- Start edge
+      fmtEdge ( _, _, l) = [toLabel l]
+
   in  nonClusteredParams { fmtNode = fmtNode, fmtEdge = fmtEdge }
 
 nfaToDot :: Nfa.Nfa Int Char -> DotGraph Node
