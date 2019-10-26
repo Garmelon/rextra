@@ -21,6 +21,7 @@ module Rextra.Nfa (
   , NdState
   , getNdState
   -- *** Transitions
+  , epsilonStep
   , transition
   , defaultTransition
   -- *** Running the whole automaton
