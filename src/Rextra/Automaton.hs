@@ -17,17 +17,6 @@ import qualified Rextra.Nfa as Nfa
  - Converting a DFA to a NFA
  -}
 
-fromMonoidalList :: (Monoid m, Ord k) => [(k, m)] -> Map.Map k m
-fromMonoidalList = foldl' insertMonoidal Map.empty
-  where
-    insertMonoidal :: (Monoid m, Ord k) => Map.Map k m -> (k, m) -> Map.Map k m
-    insertMonoidal map (k, m) = Map.insertWith mappend k m map
-
-groupByFirst :: (Ord a, Ord b) => [(a, b)] -> [(a, Set.Set b)]
-groupByFirst pairs =
-  let prepared = map (\(a, b) -> (a, Set.singleton b)) pairs
-  in  Map.assocs $ fromMonoidalList prepared
-
 dfaStateToNfaState :: (Ord s, Ord t) => Dfa.State s t -> Nfa.State s t
 dfaStateToNfaState s =
   let transitionMap = Dfa.transitions s
@@ -35,9 +24,8 @@ dfaStateToNfaState s =
       defaultTransition = (Nfa.AllExcept specialTokens, Dfa.defaultTransition s)
       otherTransitions = map (\(tSet, s) -> (Nfa.Only tSet, s))
                        . map swap
-                       . groupByFirst
-                       . map swap
-                       $ Map.assocs transitionMap
+                       . Map.assocs
+                       $ Dfa.transitionsByState transitionMap
   in  Nfa.State { Nfa.transitions        = defaultTransition : otherTransitions
                 , Nfa.epsilonTransitions = Set.empty
                 }

@@ -10,6 +10,7 @@ module Rextra.Dfa (
   , stateMap
   , entryState
   , exitStates
+  , transitionsByState
   -- ** Executing
   , transition
   , execute
@@ -20,6 +21,7 @@ module Rextra.Dfa (
 import           Data.List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
+import           Data.Tuple
 
 import           Rextra.Util
 
@@ -49,6 +51,20 @@ data State s t = State
   } deriving (Show)
 
 type StateMap s t = Map.Map s (State s t)
+
+fromMonoidalList :: (Monoid m, Ord k) => [(k, m)] -> Map.Map k m
+fromMonoidalList = foldl' insertMonoidal Map.empty
+  where
+    insertMonoidal :: (Monoid m, Ord k) => Map.Map k m -> (k, m) -> Map.Map k m
+    insertMonoidal map (k, m) = Map.insertWith mappend k m map
+
+groupByFirst :: (Ord a, Ord b) => [(a, b)] -> Map.Map a (Set.Set b)
+groupByFirst pairs =
+  let prepared = map (\(a, b) -> (a, Set.singleton b)) pairs
+  in  fromMonoidalList prepared
+
+transitionsByState :: (Ord s, Ord t) => Map.Map t s -> Map.Map s (Set.Set t)
+transitionsByState = groupByFirst . map swap . Map.assocs
 
 {-
  - Constructing

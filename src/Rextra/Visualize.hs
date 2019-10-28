@@ -28,14 +28,20 @@ saveDot format path dg = void $ runGraphviz dg format path
 saveDotAsPng :: String -> DotGraph Node -> IO ()
 saveDotAsPng = saveDot Png
 
+labelFromSet :: Set.Set Char -> String
+labelFromSet charSet = "{" ++ intersperse ',' (Set.toList charSet) ++ "}"
+
 {-
  - Visualizing DFAs
  -}
 
 convertDfaState :: (Int, Dfa.State Int Char) -> [LEdge String]
 convertDfaState (from, state) =
-  let normalEdges = map (\(t, to) -> (from, to, [t])) . Map.assocs $ Dfa.transitions state
-      defaultEdge = (from, Dfa.defaultTransition state, "**")
+  let normalEdges = map (\(to, tSet) -> (from, to, labelFromSet tSet))
+                  . Map.assocs
+                  . Dfa.transitionsByState
+                  $ Dfa.transitions state
+      defaultEdge = (from, Dfa.defaultTransition state, "*")
   in  defaultEdge : normalEdges
 
 -- | Convert a 'Dfa.Dfa' to a 'Gr' graph.
@@ -70,9 +76,6 @@ dfaToDot dfa = graphToDot (dfaAttributes dfa) (dfaToGraph dfa)
 {-
  - Visualizing NFAs
  -}
-
-labelFromSet :: Set.Set Char -> String
-labelFromSet charSet = "{" ++ intersperse ',' (Set.toList charSet) ++ "}"
 
 labelFromCondition :: Nfa.TransitionCondition Char -> String
 labelFromCondition (Nfa.Only charSet)      = labelFromSet charSet
