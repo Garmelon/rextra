@@ -1,17 +1,19 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+
 module Rextra.Automaton
   ( dfaToNfa
   , nfaToDfa
   ) where
 
-import           Control.Monad.Trans.State
-import           Data.List
 import qualified Data.Map.Strict as Map
 import           Data.Maybe
 import qualified Data.Set as Set
 import           Data.Tuple
 
 import qualified Rextra.Dfa as Dfa
+import           Rextra.Fa
 import qualified Rextra.Nfa as Nfa
+import           Rextra.Util
 
 {-
  - Converting a DFA to a NFA
@@ -19,65 +21,68 @@ import qualified Rextra.Nfa as Nfa
 
 dfaStateToNfaState :: (Ord s, Ord t) => Dfa.State s t -> Nfa.State s t
 dfaStateToNfaState s =
-  let transitionMap = Dfa.transitions s
-      specialTokens = Map.keysSet transitionMap
+  let specialTokens = Map.keysSet $ Dfa.transitions s
       defaultTransition = (Nfa.AllExcept specialTokens, Dfa.defaultTransition s)
-      otherTransitions = map (\(tSet, s) -> (Nfa.Only tSet, s))
-                       . map swap
-                       . Map.assocs
-                       $ Dfa.transitionsByState transitionMap
+      otherTransitions = map (\(tokenSet, state) -> (Nfa.Only tokenSet, state))
+                       $ map swap
+                       $ Map.assocs
+                       $ Dfa.transitionsByState s
   in  Nfa.State { Nfa.transitions        = defaultTransition : otherTransitions
                 , Nfa.epsilonTransitions = Set.empty
                 }
 
 dfaToNfa :: (Ord s, Ord t) => Dfa.Dfa s t -> Nfa.Nfa s t
-dfaToNfa dfa =
-  let stateMap = Dfa.stateMap dfa
-      exitStates = Dfa.exitStates dfa
-      nfaStateMap = Map.map dfaStateToNfaState stateMap
+dfaToNfa a =
+  let nfaStateMap = Map.map dfaStateToNfaState $ stateMap a
   -- The NFA was created from a valid DFA, so it will be valid too.
-  in  fromJust $ Nfa.nfa nfaStateMap (Dfa.entryState dfa) exitStates
+  in  fromJust $ fa nfaStateMap (entryState a) (exitStates a)
 
 {-
  - Converting a NFA to a DFA
  -}
 
-allSpecialTokens :: (Ord t) => [Nfa.State s t] -> Set.Set t
-allSpecialTokens = foldMap (foldMap (Nfa.specialTokens . fst) . Nfa.transitions)
+specialTokensOf :: Nfa.TransitionCondition t -> Set.Set t
+specialTokensOf (Nfa.Only      t) = t
+specialTokensOf (Nfa.AllExcept t) = t
 
-allNextStates :: (Ord s) => Dfa.State s t -> Set.Set s
-allNextStates s =
-  let nextStates = Map.elems $ Dfa.transitions s
-  in  Set.fromList (Dfa.defaultTransition s : nextStates)
+-- | @'allSpecialTokens' a ns@ returns all tokens that behave
+-- different from the default when when in state @ns@ of the automaton
+-- @a@ (the default being an implicitly defined token that is not
+-- mentioned in any of the automaton's state transitions).
+specialTokensAt :: (Ord s, Ord t) => Nfa.Nfa s t -> Nfa.NdState s -> Set.Set t
+specialTokensAt a ns =
+  let ndStates = Nfa.getNdState a $ Nfa.epsilonStep a ns
+  in  foldMap (foldMap (specialTokensOf . fst) . Nfa.transitions) ndStates
+
+possibleTransitionsFrom :: (Ord s, Ord t)
+                        => Nfa.Nfa s t -> Nfa.NdState s -> Map.Map t (Nfa.NdState s)
+possibleTransitionsFrom a ns = Map.fromSet (transition a ns) (specialTokensAt a ns)
 
 ndStateToDfaState :: (Ord s, Ord t) => Nfa.Nfa s t -> Nfa.NdState s -> Dfa.State (Nfa.NdState s) t
-ndStateToDfaState nfa ns =
-  let specialTokens = allSpecialTokens . Nfa.getNdState nfa $ Nfa.epsilonStep nfa ns
-  in  Dfa.State { Dfa.transitions       = Map.fromSet (\t -> Nfa.transition nfa t ns) specialTokens
-                , Dfa.defaultTransition = Nfa.defaultTransition nfa ns
-                , Dfa.accepting         = Nfa.accepting nfa ns
-                }
+ndStateToDfaState a ns =
+  Dfa.State { Dfa.transitions       = possibleTransitionsFrom a ns
+            , Dfa.defaultTransition = Nfa.defaultTransition a ns
+            }
 
-type Visited s = Set.Set (Nfa.NdState s)
+nextStatesFrom :: (Ord s, Ord t) => Nfa.Nfa s t -> Nfa.NdState s -> Set.Set (Nfa.NdState s)
+nextStatesFrom a ns =
+  let tokenTransitioned   = Map.elems $ possibleTransitionsFrom a ns
+      defaultTransitioned = Nfa.defaultTransition a ns
+  in  Set.fromList $ defaultTransitioned : tokenTransitioned
 
-exploreState :: (Ord s, Ord t)
-             => Nfa.Nfa s t
-             -> Nfa.NdState s
-             -> State (Visited s) (Dfa.StateMap (Nfa.NdState s) t)
-exploreState nfa ns = do
-  visitedStates <- get
-  if ns `Set.member` visitedStates
-    then pure Map.empty
-    else do
-      modify (Set.insert ns) -- Adding this state to the visited states
-      let dfaState    = ndStateToDfaState nfa ns
-          ownStateMap = Map.singleton ns dfaState
-          nextStates  = Set.toList $ allNextStates dfaState
-      otherStateMaps <- mapM (exploreState nfa) nextStates
-      pure $ Map.unions (ownStateMap : otherStateMaps)
+-- This whole forall business is just so I can tell the Execute
+-- typeclass that I mean Nfa.NdState when I say startState a.
+connectedStates :: forall s t. (Ord s, Ord t) => Nfa.Nfa s t -> Set.Set (Nfa.NdState s)
+connectedStates a =
+  let start = Set.singleton (startState a :: Nfa.NdState s)
+  in  connectedElements (nextStatesFrom a) start
 
-dfaStateMap :: (Ord s, Ord t) => Nfa.Nfa s t -> Dfa.StateMap (Nfa.NdState s) t
-dfaStateMap nfa = evalState (exploreState nfa (Nfa.entryNdState nfa)) Set.empty
+dfaStateMap :: (Ord s, Ord t)
+            => Nfa.Nfa s t -> Map.Map (Nfa.NdState s) (Dfa.State (Nfa.NdState s) t)
+dfaStateMap a = Map.fromSet (ndStateToDfaState a) $ connectedStates a
 
 nfaToDfa :: (Ord s, Ord t) => Nfa.Nfa s t -> Dfa.Dfa (Nfa.NdState s) t
-nfaToDfa nfa = fromJust $ Dfa.dfa (dfaStateMap nfa) (Nfa.entryNdState nfa)
+nfaToDfa a =
+  let theStateMap     = dfaStateMap a
+      acceptingStates = Set.filter (Nfa.isAccepting a) $ Map.keysSet theStateMap
+  in  fromJust $ fa theStateMap (startState a) acceptingStates

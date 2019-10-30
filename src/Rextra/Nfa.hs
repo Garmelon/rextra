@@ -14,6 +14,7 @@ module Rextra.Nfa
   , holdsTrueForDefault
   -- * Executing
   , NdState
+  , isAccepting
   , getNdState
   , epsilonStep
   , defaultTransition
@@ -61,10 +62,17 @@ instance FaState State where
 type Nfa s t = Fa State s t
 type NdState s = Set.Set s
 
+-- Not the most brilliant of names, very similar to Executable's
+-- 'accepts'. But I'd rather repeat myself in this way than
+-- reimplement this predicate everywhere I need it (e. g. in
+-- 'nfaToDfa' in Automaton.hs).
+isAccepting :: (Ord s) => Nfa s t -> NdState s -> Bool
+isAccepting a ns = not $ ns `Set.disjoint` exitStates a
+
 instance (Ord s) => Executable (Fa State s) (Set.Set s) where
   startState = Set.singleton . entryState
   transition = nfaTransition
-  accepts a s = not $ s `Set.disjoint` exitStates a
+  accepts    = isAccepting
 
 only :: (Ord t) => [t] -> TransitionCondition t
 only = Only . Set.fromList
@@ -77,8 +85,8 @@ nfa :: (Ord s)
      -> s
      -> [s]
      -> Maybe (Nfa s t)
-nfa states entryState exitStates =
-  let stateList = map (\(s, ts, et) -> (s, State ts (Set.fromList et))) states
+nfa stateInfo entryState exitStates =
+  let stateList = map (\(s, ts, et) -> (s, State ts (Set.fromList et))) stateInfo
   in  fa (Map.fromList stateList) entryState (Set.fromList exitStates)
 
 -- Transitions
@@ -93,9 +101,9 @@ tokenStep :: (Ord s, Ord t) => Nfa s t -> t -> NdState s -> NdState s
 tokenStep a t ns = foldMap (nextStates t) $ getNdState a ns
   where
     nextStates :: (Ord s, Ord t) => t -> State s t -> Set.Set s
-    nextStates t state = Set.fromList
+    nextStates token state = Set.fromList
                        $ map snd
-                       $ filter (\(cond, _) -> cond `holdsTrueFor` t)
+                       $ filter (\(cond, _) -> cond `holdsTrueFor` token)
                        $ transitions state
 
 defaultStep :: (Ord s) => Nfa s t -> NdState s -> NdState s

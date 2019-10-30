@@ -9,7 +9,6 @@ module Rextra.Dfa
   , transitionsByState
   ) where
 
-import           Data.List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import           Data.Tuple
@@ -48,6 +47,6 @@ dfaTransition a s t =
         Nothing          -> defaultTransition state
 
 dfa :: (Ord s, Ord t) => [(s, [(t, s)], s)] -> s -> [s] -> Maybe (Dfa s t)
-dfa states entryState exitStates =
-  let stateList = map (\(s, ts, dt) -> (s, State (Map.fromList ts) dt)) states
+dfa stateInfo entryState exitStates =
+  let stateList = map (\(s, ts, dt) -> (s, State (Map.fromList ts) dt)) stateInfo
   in  fa (Map.fromList stateList) entryState (Set.fromList exitStates)
