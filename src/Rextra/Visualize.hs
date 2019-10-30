@@ -35,7 +35,7 @@ instance AsLabel [Char] where
 
 instance AsLabel a => AsLabel (Set.Set a) where
   asLabel s =
-    let sublabels = map asLabel $ Set.toList s
+    let sublabels = map asLabel $ Set.elems s
     in  "{" ++ intercalate "," sublabels ++ "}"
 
 {-
