@@ -1,66 +1,31 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE TupleSections #-}
 
-module Rextra.Nfa (
-  -- * Nondeterministic Finite Automaton
-    Nfa
-  , State(..)
-  , StateMap
-  , TransitionCondition(..)
-  , specialTokens
-  , accepts
-  -- ** Constructing
+module Rextra.Nfa
+  ( Nfa
   , only
   , allExcept
   , nfa
-  , nfa'
-  -- ** Properties
-  , stateMap
-  , entryState
-  , exitStates
-  -- ** Executing
+  , State(..)
+  , TransitionCondition(..)
+  , holdsTrueFor
+  , holdsTrueForDefault
+  -- * Executing
   , NdState
   , getNdState
-  -- *** Transitions
   , epsilonStep
-  , transition
   , defaultTransition
-  -- *** Running the whole automaton
-  , entryNdState
-  , accepting
-  , execute
-  -- ** Renaming
-  , rename
   ) where
 
-import           Data.List
-import qualified Data.Map.Strict as Map
+import qualified Data.Map as Map
 import qualified Data.Set as Set
 
+import           Rextra.Fa
 import           Rextra.Util
 
-{-
- - Types
- -}
-
--- | A type representing a nondeterministic finite automaton.
---
--- It has one entry state and any number of exit states, which can be
--- interpreted as accepting states when the NFA is run.
-data Nfa s t = Nfa
-  { stateMap   :: StateMap s t
-  , entryState :: s
-  , exitStates :: Set.Set s
-  } deriving (Show)
-
-getState :: (Ord s) => Nfa s t -> s -> State s t
-getState nfa s = stateMap nfa Map.! s
-
-data State s t = State
-  { transitions        :: [(TransitionCondition t, s)]
-  , epsilonTransitions :: Set.Set s
-  } deriving (Show)
-
-type StateMap s t = Map.Map s (State s t)
+-- State stuff
 
 -- | This condition determines which tokens a state transition applies to.
 --
@@ -73,45 +38,33 @@ data TransitionCondition t
   | AllExcept (Set.Set t)
   deriving (Show)
 
--- | The tokens which are treated differently from the default by the
-
-specialTokens :: TransitionCondition t -> Set.Set t
-specialTokens (Only tSet)      = tSet
-specialTokens (AllExcept tSet) = tSet
-
 -- | Whether the condition holds true for a token.
-accepts :: (Ord t) => TransitionCondition t -> t -> Bool
-accepts (Only s)      t = Set.member t s
-accepts (AllExcept s) t = Set.notMember t s
+holdsTrueFor :: (Ord t) => TransitionCondition t -> t -> Bool
+holdsTrueFor (Only s)      t = Set.member t s
+holdsTrueFor (AllExcept s) t = Set.notMember t s
 
-{-
- - Constructing
- -}
+holdsTrueForDefault :: TransitionCondition t -> Bool
+holdsTrueForDefault (AllExcept _) = True
+holdsTrueForDefault _             = False
 
-integrityCheck :: (Ord s) => Nfa s t -> Bool
-integrityCheck nfa =
-  let states = Map.elems $ stateMap nfa
-      referencedStates = Set.unions $
-        [ Set.singleton (entryState nfa)
-        , exitStates nfa
-        , Set.fromList . map snd $ concatMap transitions states
-        ] <> map epsilonTransitions states
-  in  referencedStates `Set.isSubsetOf` Map.keysSet (stateMap nfa)
+data State s t = State
+  { transitions        :: [(TransitionCondition t, s)]
+  , epsilonTransitions :: Set.Set s
+  } deriving (Show)
 
--- | Construct an 'Nfa' from all its components.
---
--- This constructor function performs some error checking required to
--- keep the data structure internally consistent. At the moment, this
--- is limited to checking whether all state names mentioned anywhere
--- in the data struture actually exist in the state map.
-nfa :: (Ord s)
-    => StateMap s t    -- ^ The state lookup map (maps state name to state itself)
-    -> s               -- ^ The entry state (starting state)
-    -> Set.Set s       -- ^ The exit states
-    -> Maybe (Nfa s t) -- ^ The 'Nfa', if the data didn't show any inconsistencies
-nfa stateMap entryState exitStates =
-  let myNfa = Nfa{stateMap=stateMap, entryState=entryState, exitStates=exitStates}
-  in  if integrityCheck myNfa then Just myNfa else Nothing
+instance FaState State where
+  canReach State{transitions, epsilonTransitions} =
+    Set.union epsilonTransitions $ Set.fromList $ map snd transitions
+
+-- Nfa stuff
+
+type Nfa s t = Fa State s t
+type NdState s = Set.Set s
+
+instance (Ord s) => Executable (Fa State s) (Set.Set s) where
+  startState = Set.singleton . entryState
+  transition = nfaTransition
+  accepts a s = not $ s `Set.disjoint` exitStates a
 
 only :: (Ord t) => [t] -> TransitionCondition t
 only = Only . Set.fromList
@@ -119,102 +72,41 @@ only = Only . Set.fromList
 allExcept :: (Ord t) => [t] -> TransitionCondition t
 allExcept = AllExcept . Set.fromList
 
-nfa' :: (Ord s)
+nfa :: (Ord s)
      => [(s, [(TransitionCondition t, s)], [s])]
      -> s
      -> [s]
      -> Maybe (Nfa s t)
-nfa' states entryState exitStates =
+nfa states entryState exitStates =
   let stateList = map (\(s, ts, et) -> (s, State ts (Set.fromList et))) states
-  in  nfa (Map.fromList stateList) entryState (Set.fromList exitStates)
-
-{-
- - Executing
- -}
-
--- | The nondeterministic (nd) current state of an NFA.
---
--- This type is used when executing a NFA.
-type NdState s = Set.Set s
-
-getNdState :: (Ord s) => Nfa s t -> NdState s -> [State s t]
-getNdState nfa ns = map (getState nfa) $ Set.toList ns
+  in  fa (Map.fromList stateList) entryState (Set.fromList exitStates)
 
 -- Transitions
 
+getNdState :: (Ord s) => Nfa s t -> NdState s -> [State s t]
+getNdState a ns = map (getState a) $ Set.toList ns
+
 epsilonStep :: (Ord s) => Nfa s t -> NdState s -> NdState s
-epsilonStep nfa ns = connectedElements (epsilonTransitions . getState nfa) ns
+epsilonStep a ns = connectedElements (epsilonTransitions . getState a) ns
 
 tokenStep :: (Ord s, Ord t) => Nfa s t -> t -> NdState s -> NdState s
-tokenStep nfa t ns = foldMap (nextStates t) $ getNdState nfa ns
+tokenStep a t ns = foldMap (nextStates t) $ getNdState a ns
   where
     nextStates :: (Ord s, Ord t) => t -> State s t -> Set.Set s
     nextStates t state = Set.fromList
-                       . map snd
-                       . filter (\(cond, _) -> cond `accepts` t)
+                       $ map snd
+                       $ filter (\(cond, _) -> cond `holdsTrueFor` t)
                        $ transitions state
 
 defaultStep :: (Ord s) => Nfa s t -> NdState s -> NdState s
-defaultStep nfa ns = Set.fromList
-                   . map snd
-                   . filter (isAllExcept . fst)
-                   . concatMap transitions
-                   $ getNdState nfa ns
-  where
-    isAllExcept :: TransitionCondition t -> Bool
-    isAllExcept (AllExcept _) = True
-    isAllExcept _             = False
+defaultStep a ns = Set.fromList
+                 $ map snd
+                 $ filter (holdsTrueForDefault . fst)
+                 $ concatMap transitions
+                 $ getNdState a ns
 
--- | The NFA's transition function.
---
--- Since this is a /nondeterministic/ finite automaton, the transition
--- function does not operate on individual states, but rather on a set
--- of current states.
---
--- __Warning__: This function does /not/ check whether the states
--- actually exist in the automaton, and it crashes if an invalid state
--- is used.
-transition :: (Ord s, Ord t) => Nfa s t -> t -> NdState s -> NdState s
-transition nfa t = epsilonStep nfa . tokenStep nfa t . epsilonStep nfa
+nfaTransition :: (Ord s, Ord t) => Nfa s t -> NdState s -> t -> NdState s
+nfaTransition a s t = epsilonStep a $ tokenStep a t $ epsilonStep a s
 
 defaultTransition :: (Ord s) => Nfa s t -> NdState s -> NdState s
-defaultTransition nfa = epsilonStep nfa . defaultStep nfa . epsilonStep nfa
-
--- Actually executing
-
-entryNdState :: Nfa s t -> NdState s
-entryNdState = Set.singleton . entryState
-
-accepting :: (Ord s) => Nfa s t -> NdState s -> Bool
-accepting nfa ns = not $ Set.disjoint ns (exitStates nfa)
-
-execute :: (Ord s, Ord t) => Nfa s t -> [t] -> Bool
-execute nfa tokens =
-  let finalNdState = foldl' (flip $ transition nfa) (entryNdState nfa) tokens
-  in  accepting nfa finalNdState
-
-{-
- - Renaming
- -}
-
-renameTransition :: (Ord s) => (TransitionCondition t, s) -> Rename s (TransitionCondition t, Int)
-renameTransition (cond, s) = (cond,) <$> getName s
-
-renameState :: (Ord s) => State s t -> Rename s (State Int t)
-renameState state = do
-  newTransitions <- mapM renameTransition $ transitions state
-  newEpsilonTransitions <- renameSet getName $ epsilonTransitions state
-  pure $ State { transitions = newTransitions, epsilonTransitions = newEpsilonTransitions }
-
-renameAssoc :: (Ord s, Ord t) => (s, State s t) -> Rename s (Int, State Int t)
-renameAssoc (name, state) = (,) <$> getName name <*> renameState state
-
-rename :: (Ord s, Ord t) => Nfa s t -> Nfa Int t
-rename nfa = doRename $ do
-  newStateMap <- renameMap renameAssoc $ stateMap nfa
-  newEntryState <- getName $ entryState nfa
-  newExitStates <- renameSet getName $ exitStates nfa
-  pure $ Nfa { stateMap   = newStateMap
-             , entryState = newEntryState
-             , exitStates = newExitStates
-             }
+defaultTransition a = epsilonStep a . defaultStep a . epsilonStep a
