@@ -4,8 +4,9 @@
 -- | This module contains ways to represent finite automata and their
 -- execution/evaluation.
 
-module Rextra.Fa
-  ( FaState(..)
+module Rextra.Fa (
+  -- * Finite automata
+    FaState(..)
   , Fa
   , fa
   , stateMap
@@ -13,6 +14,7 @@ module Rextra.Fa
   , exitStates
   , states
   , getState
+  -- * Executing automata
   , Executable(..)
   , transitionAll
   , execute
@@ -22,11 +24,15 @@ import           Data.List
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
+{-
+ - Finite automata
+ -}
+
 -- | The state of a finite automaton.
 class FaState state where
   -- | All the states that can be reached (by any sort of transition)
   -- from this state.
-  canReach :: state s t -> Set.Set s
+  canReach :: (Ord s) => state s t -> Set.Set s
 
 -- | A finite automaton.
 data Fa state s t = Fa
@@ -38,7 +44,7 @@ data Fa state s t = Fa
   , exitStates :: Set.Set s
   -- ^ The automaton's accepting states, i. e. the states that
   -- determine whether the automaton accepts a certain word.
-  }
+  } deriving (Show)
 
 -- | @'states' fa@ are the identifiers of all states contained in @fa@.
 states :: Fa state s t -> Set.Set s
@@ -67,19 +73,23 @@ fa stateMap entryState exitStates =
   let potentialFa = Fa{stateMap, entryState, exitStates}
   in  if integrityCheck potentialFa then Just potentialFa else Nothing
 
+{-
+ - Executing
+ -}
+
 -- | A special type class for automata that can be executed. These
 -- automata must not necessarily be finite.
 class Executable a execState where
   -- | The state at which execution of the automaton begins.
-  startState :: a s t -> execState
+  startState :: a t -> execState
   -- | A function that determines the automaton's next state based on
   -- a token.
-  transition :: a s t -> execState -> t -> execState
-  -- | Whether the automaton acceps
-  accepts    :: a s t -> execState -> Bool
+  transition :: (Ord t) => a t -> execState -> t -> execState
+  -- | Whether the automaton accepts the execution state.
+  accepts :: a t -> execState -> Bool
 
 -- | Perform all transitions corresponding to a word (or list) of tokens, in order.
-transitionAll :: (Executable a execState) => a s t -> execState -> [t] -> execState
+transitionAll :: (Executable a execState, Ord t) => a t -> execState -> [t] -> execState
 transitionAll a = foldl' (transition a)
 
 -- | Like 'transitionAll', starting with the automaton's 'startState'.
@@ -88,5 +98,5 @@ transitionAll a = foldl' (transition a)
 -- 'accepts' like this:
 --
 -- > a `accepts` execute a w
-execute :: (Executable a execState) => a s t -> [t] -> execState
+execute :: (Executable a execState, Ord t) => a t -> [t] -> execState
 execute a = transitionAll a (startState a)

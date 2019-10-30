@@ -10,10 +10,14 @@ module Rextra.Util
   , renameMap
   , renameKeys
   , renameValues
+  -- * Grouping
+  , fromMonoidalList
+  , groupByFirst
   ) where
 
 import           Control.Monad
 import           Control.Monad.Trans.State
+import           Data.List
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
@@ -54,3 +58,14 @@ renameKeys f = renameMap (\(k, v) -> (,v) <$> f k)
 
 renameValues :: (Ord k) => (v1 -> Rename n v2) -> Map.Map k v1 -> Rename n (Map.Map k v2)
 renameValues f = renameMap (\(k, v) -> (k,) <$> f v)
+
+fromMonoidalList :: (Monoid m, Ord k) => [(k, m)] -> Map.Map k m
+fromMonoidalList = foldl' insertMonoidal Map.empty
+  where
+    insertMonoidal :: (Monoid v, Ord k) => Map.Map k v -> (k, v) -> Map.Map k v
+    insertMonoidal m (k, v) = Map.insertWith mappend k v m
+
+groupByFirst :: (Ord a, Ord b) => [(a, b)] -> Map.Map a (Set.Set b)
+groupByFirst pairs =
+  let prepared = map (\(a, b) -> (a, Set.singleton b)) pairs
+  in  fromMonoidalList prepared
