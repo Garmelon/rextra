@@ -1,121 +1,125 @@
-{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE FlexibleInstances #-}
 
-module Rextra.Visualize
-  ( showDot
-  , saveDot
-  , saveDotAsPng
-  , dfaToDot
-  , nfaToDot
-  ) where
+module Rextra.Visualize where
 
 import           Control.Monad
-import           Data.Graph.Inductive
 import           Data.GraphViz
 import           Data.List
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
 import qualified Rextra.Dfa as Dfa
+import           Rextra.Fa
 import qualified Rextra.Nfa as Nfa
-import           Rextra.Util
 
-showDot :: DotGraph Node -> IO ()
+-- First, some labelling...
+
+-- | Instances of this type class must fulfill the following rules:
+--
+-- * The return value of 'asLabel' must never be an empty string.
+--
+-- * @a == b@ is equivalent to @'asLabel' a == 'asLabel' b@.
+class AsLabel a where
+  asLabel :: a -> String
+
+instance AsLabel Int where
+  asLabel = show
+
+instance AsLabel Char where
+  asLabel c = [c]
+
+-- | __Warning__: Only use this if you know that no empty strings
+-- occur in your automaton's state names!
+instance AsLabel [Char] where
+  asLabel = id
+
+instance AsLabel a => AsLabel (Set.Set a) where
+  asLabel s =
+    let sublabels = map asLabel $ Set.toList s
+    in  "{" ++ intercalate "," sublabels ++ "}"
+
+{-
+ - Displaying or saving 'DotGraph's
+ -}
+
+showDot :: (PrintDotRepr dg n) => dg n -> IO ()
 showDot dg = runGraphvizCanvas' dg Gtk
 
-saveDot :: GraphvizOutput -> String -> DotGraph Node -> IO ()
+saveDot :: (PrintDotRepr dg n) => GraphvizOutput -> String -> dg n -> IO ()
 saveDot format path dg = void $ runGraphviz dg format path
 
-saveDotAsPng :: String -> DotGraph Node -> IO ()
+saveDotAsPng :: (PrintDotRepr dg n) => String -> dg n -> IO ()
 saveDotAsPng = saveDot Png
 
-labelFromSet :: Set.Set Char -> String
-labelFromSet charSet = "{" ++ intersperse ',' (Set.toList charSet) ++ "}"
-
 {-
- - Visualizing DFAs
+ - General 'Fa' stuff
  -}
 
-convertDfaState :: (Int, Dfa.State Int Char) -> [LEdge String]
-convertDfaState (from, state) =
-  let normalEdges = map (\(to, tSet) -> (from, to, labelFromSet tSet))
-                  . Map.assocs
-                  . Dfa.transitionsByState
-                  $ Dfa.transitions state
-      defaultEdge = (from, Dfa.defaultTransition state, "*")
-  in  defaultEdge : normalEdges
+-- The node label is a visibility flag. If it is False the node should
+-- be invisible in the displayed graph.
+nodes :: (AsLabel s) => Fa state s t -> [(String, Bool)]
+nodes a =
+  let normalNodes = map (\s -> (asLabel s, True)) $ Set.toList $ states a
+      entryNode   = ("", False)
+  in entryNode : normalNodes
 
--- | Convert a 'Dfa.Dfa' to a 'Gr' graph.
---
--- This function assumes that no node has a negative name.
-dfaToGraph :: Dfa.Dfa Int Char -> Gr () String
-dfaToGraph dfa =
-  let stateMap  = Dfa.stateMap dfa
-      startNode = (-1, ())
-      startEdge = (-1, Dfa.entryState dfa, "")
-      nodes     = map (\k -> (k, ())) $ Map.keys stateMap
-      edges     = concatMap convertDfaState $ Map.assocs stateMap
-  in  mkGraph (startNode : nodes) (startEdge : edges)
+-- Finally, a good use for the list monad! I couldn't even have used
+-- the applicative instance instead :D
+edges :: (Ord s, AsLabel s)
+      => Fa state s t -> (state s t -> [(String, s)]) -> [(String, String, String)]
+edges a f = ("", asLabel $ entryState a, "") : do
+  from        <- Set.toList $ states a
+  (label, to) <- f $ getState a from
+  pure (asLabel from, asLabel to, label)
 
-dfaAttributes :: Labellable el => Dfa.Dfa Int t -> GraphvizParams Int nl el () nl
-dfaAttributes dfa =
-  let exitStates = Dfa.exitStates dfa
+faParams :: (AsLabel s) => Fa state s t -> GraphvizParams String Bool String () Bool
+faParams a =
+  let acceptingStates = Set.map asLabel $ exitStates a
 
-      fmtNode (-1, _) = [style invis] -- Start node
-      fmtNode ( n, _)
-        | n `Set.member` exitStates = [shape DoubleCircle]
-        | otherwise                 = [shape Circle]
+      formatNode (_, False) = [style invis] -- See comment on 'nodes'
+      formatNode (s,  True) =
+        let accepting = s `Set.member` acceptingStates
+        in  [toLabel s, shape (if accepting then DoubleCircle else Circle)]
 
-      fmtEdge (-1, _, _) = [] -- Start edge
-      fmtEdge ( _, _, l) = [toLabel l]
+      formatEdge (_, _,    "") = [] -- Probably the start edge
+      formatEdge (_, _, label) = [toLabel label]
+  in  nonClusteredParams { fmtNode = formatNode, fmtEdge = formatEdge }
 
-  in  nonClusteredParams { fmtNode = fmtNode, fmtEdge = fmtEdge }
-
-dfaToDot :: Dfa.Dfa Int Char -> DotGraph Node
-dfaToDot dfa = graphToDot (dfaAttributes dfa) (dfaToGraph dfa)
+faToDot :: (Ord s, AsLabel s)
+        => (state s t -> [(String, s)]) -> Fa state s t -> DotGraph String
+faToDot f a = graphElemsToDot (faParams a) (nodes a) (edges a f)
 
 {-
- - Visualizing NFAs
+ - 'Dfa' stuff
  -}
 
-labelFromCondition :: Nfa.TransitionCondition Char -> String
-labelFromCondition (Nfa.Only charSet)      = labelFromSet charSet
-labelFromCondition (Nfa.AllExcept charSet)
-  | Set.null charSet = "Σ"
-  | otherwise        = "Σ\\" ++ labelFromSet charSet
+dfaShowNoDefault :: (Ord s, Ord t, AsLabel t) => Dfa.State s t -> [(String, s)]
+dfaShowNoDefault = map (\(s, t) -> (asLabel t, s)) . Map.assocs . Dfa.transitionsByState
 
-convertNfaState :: (Int, Nfa.State Int Char) -> [LEdge String]
-convertNfaState (from, state) =
-  let transitions        = Nfa.transitions state
-      transitionEdges    = map (\(cond, to) -> (from, to, labelFromCondition cond)) transitions
-      epsilonTransitions = Set.toList $ Nfa.epsilonTransitions state
-      epsilonEdges       = map (\to -> (from, to, "ε")) epsilonTransitions
-  in transitionEdges ++ epsilonEdges
+dfaShowAll :: (Ord s, Ord t, AsLabel t) => Dfa.State s t -> [(String, s)]
+dfaShowAll s = ("*", Dfa.defaultTransition s) : dfaShowNoDefault s
 
-nfaToGraph :: Nfa.Nfa Int Char -> Gr () String
-nfaToGraph nfa =
-  let stateMap  = Nfa.stateMap nfa
-      startNode = (-1, ())
-      startEdge = (-1, Nfa.entryState nfa, "")
-      nodes     = map (\k -> (k, ())) $ Map.keys stateMap
-      edges     = concatMap convertNfaState $ Map.assocs stateMap
-  in  mkGraph (startNode : nodes) (startEdge : edges)
+dfaToDot :: (Ord s, AsLabel s, Ord t, AsLabel t) => Dfa.Dfa s t -> DotGraph String
+dfaToDot = faToDot dfaShowAll
 
-anyNfaToGraph :: (Ord s) => Nfa.Nfa s Char -> Gr () String
-anyNfaToGraph = nfaToGraph . Nfa.rename
+dfaToDotNoDefault :: (Ord s, AsLabel s, Ord t, AsLabel t) => Dfa.Dfa s t -> DotGraph String
+dfaToDotNoDefault = faToDot dfaShowNoDefault
 
-nfaAttributes :: Labellable el => Nfa.Nfa Int t -> GraphvizParams Int nl el () nl
-nfaAttributes nfa =
-  let exitStates = Nfa.exitStates nfa
+{-
+ - 'Nfa' stuff
+ -}
 
-      fmtNode (-1, _) = [style invis] -- Start node
-      fmtNode ( n, _)
-        | n `Set.member` exitStates = [shape DoubleCircle]
-        | otherwise                 = [shape Circle]
+showCondition :: (AsLabel t) => Nfa.TransitionCondition t -> String
+showCondition (Nfa.Only s)      = asLabel s
+showCondition (Nfa.AllExcept s)
+  | Set.null s = "Σ"
+  | otherwise  = "Σ\\" ++ asLabel s
 
-      fmtEdge (-1, _, _) = [] -- Start edge
-      fmtEdge ( _, _, l) = [toLabel l]
+nfaShow :: (AsLabel t) => Nfa.State s t -> [(String, s)]
+nfaShow state =
+  let normalEdges  = map (\(cond, s) -> (showCondition cond, s)) $ Nfa.transitions state
+      epsilonEdges = map (\s -> ("ε", s)) $ Set.toList $ Nfa.epsilonTransitions state
+  in  normalEdges ++ epsilonEdges
 
-  in  nonClusteredParams { fmtNode = fmtNode, fmtEdge = fmtEdge }
-
-nfaToDot :: Nfa.Nfa Int Char -> DotGraph Node
-nfaToDot nfa = graphToDot (nfaAttributes nfa) (nfaToGraph nfa)
+nfaToDot :: (Ord s, AsLabel s, AsLabel t) => Nfa.Nfa s t -> DotGraph String
+nfaToDot = faToDot nfaShow
