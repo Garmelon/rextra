@@ -75,7 +75,7 @@ nextStatesFrom a ns =
 -- typeclass that I mean Nfa.NdState when I say startState a.
 connectedStates :: forall s t. (Ord s, Ord t) => Nfa.Nfa s t -> Set.Set (Nfa.NdState s)
 connectedStates a =
-  let start = Set.singleton (startState a :: Nfa.NdState s)
+  let start = Set.singleton $ Nfa.epsilonStep a $ (startState a :: Nfa.NdState s)
   in  connectedElements (nextStatesFrom a) start
 
 dfaStateMap :: (Ord s, Ord t)
@@ -86,7 +86,8 @@ nfaToDfa :: (Ord s, Ord t) => Nfa.Nfa s t -> Dfa.Dfa (Nfa.NdState s) t
 nfaToDfa a =
   let theStateMap     = dfaStateMap a
       acceptingStates = Set.filter (Nfa.isAccepting a) $ Map.keysSet theStateMap
-  in  fromJust $ fa theStateMap (startState a) acceptingStates
+      theStartState   = Nfa.epsilonStep a $ startState a
+  in  fromJust $ fa theStateMap theStartState acceptingStates
 
 {-
  - Minimizing a DFA
