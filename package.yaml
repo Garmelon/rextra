@@ -1,10 +1,10 @@
 name:                rextra
 version:             0.1.0.0
 github:              "Garmelon/rextra"
-license:             BSD3
-author:              "Author name here"
-maintainer:          "example@example.com"
-copyright:           "2019 Author name here"
+license:             MIT
+author:              "Garmelon"
+maintainer:          "joscha@plugh.de"
+copyright:           "2019 Garmelon"
 
 extra-source-files:
 - README.md
@@ -23,8 +23,6 @@ dependencies:
 - transformers >= 0.5.6 && < 0.6
 - containers >= 0.6 && < 0.7
 - graphviz >= 2999.20 && < 2999.21
-- fgl >= 5.7 && < 5.8
-# algebraic-graphs >= 0.4 && < 0.5
 
 library:
   source-dirs: src
