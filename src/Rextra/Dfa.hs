@@ -6,6 +6,7 @@ module Rextra.Dfa
   ( Dfa
   , dfa
   , State(..)
+  , stateTransition
   , normalize
   , mapState
   , transitionsByState
@@ -24,6 +25,12 @@ data State s t = State
   { transitions       :: Map.Map t s
   , defaultTransition :: s
   } deriving (Show, Eq, Ord)
+
+stateTransition :: (Ord t) => State s t -> t -> s
+stateTransition state token =
+  case transitions state Map.!? token of
+    Nothing -> defaultTransition state
+    Just s  -> s
 
 normalize :: (Eq s) => State s t -> State s t
 normalize State{transitions, defaultTransition} =
@@ -50,15 +57,8 @@ type Dfa s t = Fa State s t
 
 instance (Ord s) => Executable (Fa State s) s where
   startState = entryState
-  transition = dfaTransition
+  transition a s = stateTransition (getState a s)
   accepts a s = s `Set.member` exitStates a
-
-dfaTransition :: (Ord s, Ord t) => Dfa s t -> s -> t -> s
-dfaTransition a s t =
-  let state = getState a s
-  in  case transitions state Map.!? t of
-        (Just nextState) -> nextState
-        Nothing          -> defaultTransition state
 
 dfa :: (Ord s, Ord t) => [(s, [(t, s)], s)] -> s -> [s] -> Maybe (Dfa s t)
 dfa stateInfo entryState exitStates =

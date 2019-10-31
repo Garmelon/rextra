@@ -1,16 +1,26 @@
 {-# LANGUAGE FlexibleInstances #-}
 
-module Rextra.Visualize where
+module Rextra.Visualize
+  ( showDot
+  , saveDot
+  , saveDotAsPng
+  , dfaToDot
+  , dfaToDotNoDefault
+  , dfaToDotWithTokens
+  , nfaToDot
+  ) where
 
 import           Control.Monad
 import           Data.GraphViz
 import           Data.List
 import qualified Data.Map as Map
 import qualified Data.Set as Set
+import           Data.Tuple
 
 import qualified Rextra.Dfa as Dfa
 import           Rextra.Fa
 import qualified Rextra.Nfa as Nfa
+import           Rextra.Util
 
 -- First, some labelling...
 
@@ -104,6 +114,15 @@ dfaToDot = faToDot dfaShowAll
 
 dfaToDotNoDefault :: (Ord s, AsLabel s, Ord t, AsLabel t) => Dfa.Dfa s t -> DotGraph String
 dfaToDotNoDefault = faToDot dfaShowNoDefault
+
+dfaShowTokens :: (Ord s, Ord t, AsLabel t) => Set.Set t -> Dfa.State s t -> [(String, s)]
+dfaShowTokens tokens state =
+  let bareEdges    = Map.assocs $ Map.fromSet (Dfa.stateTransition state) tokens
+      groupedEdges = Map.assocs $ groupByFirst $ map swap bareEdges
+  in  map (\(s, t) -> (asLabel t, s)) groupedEdges
+
+dfaToDotWithTokens :: (Ord s, AsLabel s, Ord t, AsLabel t) => [t] -> Dfa.Dfa s t -> DotGraph String
+dfaToDotWithTokens tokenList = faToDot $ dfaShowTokens $ Set.fromList tokenList
 
 {-
  - 'Nfa' stuff
