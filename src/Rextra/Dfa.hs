@@ -6,6 +6,8 @@ module Rextra.Dfa
   ( Dfa
   , dfa
   , State(..)
+  , normalize
+  , mapState
   , transitionsByState
   ) where
 
@@ -21,7 +23,19 @@ import           Rextra.Util
 data State s t = State
   { transitions       :: Map.Map t s
   , defaultTransition :: s
-  } deriving (Show)
+  } deriving (Show, Eq, Ord)
+
+normalize :: (Eq s) => State s t -> State s t
+normalize State{transitions, defaultTransition} =
+  State { transitions = Map.filter (/= defaultTransition) transitions
+        , defaultTransition
+        }
+
+mapState :: (s1 -> s2) -> State s1 t -> State s2 t
+mapState f State{transitions, defaultTransition} =
+  State { transitions       = Map.map f transitions
+        , defaultTransition = f defaultTransition
+        }
 
 instance FaState State where
   canReach State{transitions, defaultTransition} =

@@ -3,6 +3,7 @@
 module Rextra.Automaton
   ( dfaToNfa
   , nfaToDfa
+  , minimizeDfa
   ) where
 
 import qualified Data.Map.Strict as Map
@@ -86,3 +87,73 @@ nfaToDfa a =
   let theStateMap     = dfaStateMap a
       acceptingStates = Set.filter (Nfa.isAccepting a) $ Map.keysSet theStateMap
   in  fromJust $ fa theStateMap (startState a) acceptingStates
+
+{-
+ - Minimizing a DFA
+ -}
+
+type EquivalenceGroup s = Set.Set s
+type Partition s = Set.Set (EquivalenceGroup s)
+type Behaviour s t = Dfa.State (EquivalenceGroup s) t
+
+partitionToMap :: (Ord s) => Partition s -> Map.Map s (EquivalenceGroup s)
+partitionToMap partition = Map.fromList $ concatMap stateGroupAssocs $ Set.toList partition
+  where stateGroupAssocs group = map (\s -> (s, group)) $ Set.toList group
+
+stateToBehaviour :: (Ord s) => Map.Map s (EquivalenceGroup s) -> Dfa.State s t -> Behaviour s t
+stateToBehaviour mapping = Dfa.normalize . Dfa.mapState (mapping Map.!)
+
+findBehaviours :: (Ord s)
+               => Map.Map s (EquivalenceGroup s)
+               -> Map.Map s (Dfa.State s t)
+               -> Map.Map s (Behaviour s t)
+findBehaviours mapping statemap = Map.map (stateToBehaviour mapping) statemap
+
+groupByBehaviour :: (Ord s, Ord t)
+                 => Map.Map s (Behaviour s t)
+                 -> EquivalenceGroup s
+                 -> Map.Map (Behaviour s t) (EquivalenceGroup s)
+groupByBehaviour mapping = groupByFirst . map (\s -> (mapping Map.! s, s)) . Set.toList
+
+groupAllByBehaviour :: (Ord s, Ord t)
+                    => Map.Map s (Behaviour s t)
+                    -> Partition s
+                    -> Map.Map (Behaviour s t) (EquivalenceGroup s)
+groupAllByBehaviour mapping = Map.unions . map (groupByBehaviour mapping) . Set.toList
+
+findNewBehaviourGrouping :: (Ord s, Ord t)
+                         => Map.Map s (Dfa.State s t)
+                         -> Partition s
+                         -> Map.Map (Behaviour s t) (EquivalenceGroup s)
+findNewBehaviourGrouping statemap partition =
+  let mapping    = partitionToMap partition
+      behaviours = findBehaviours mapping statemap
+  in  groupAllByBehaviour behaviours partition
+
+groupingToPartition :: (Ord s) => Map.Map (Behaviour s t) (EquivalenceGroup s) -> Partition s
+groupingToPartition = Set.fromList . Map.elems
+
+findGroupingFixpoint :: (Ord s, Ord t)
+                     => Map.Map s (Dfa.State s t)
+                     -> Partition s
+                     -> Map.Map (Behaviour s t) (EquivalenceGroup s)
+findGroupingFixpoint statemap partition =
+  let newGrouping  = findNewBehaviourGrouping statemap partition
+      newPartition = groupingToPartition newGrouping
+  in  if partition == newPartition
+      then newGrouping
+      else findGroupingFixpoint statemap newPartition
+
+initialPartition :: (Ord s) => Dfa.Dfa s t -> Partition s
+initialPartition a =
+  let (x, y) = Set.partition (a `accepts`) (states a)
+  in  Set.fromList [x, y]
+
+minimizeDfa :: (Ord s, Ord t) => Dfa.Dfa s t -> Dfa.Dfa (EquivalenceGroup s) t
+minimizeDfa a =
+  let grouping      = findGroupingFixpoint (stateMap a) (initialPartition a)
+      mapping       = partitionToMap $ groupingToPartition grouping
+      newStateMap   = Map.fromList $ map swap $ Map.assocs grouping
+      newEntryState = mapping Map.! entryState a
+      newExitStates = Set.map (mapping Map.!) (exitStates a)
+  in  fromJust $ fa newStateMap newEntryState newExitStates
