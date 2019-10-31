@@ -5,13 +5,13 @@ convert between NFAs and DFAs, and minimize DFAs.
 
 The representation of DFAs and NFAs assumes an infinite alphabet:
 
-DFA states always contain a default transition (marked with `*` in the
-visualisations), which is taken if the current token doesn't appear in
-any of the other transitions.
+* DFA states always contain a default transition (marked with `*` in
+  the visualisations), which is taken if the current token doesn't
+  appear in any of the other transitions.
 
-NFA transitions either apply to a set of tokens, or to all tokens
-*except* a specified set. In the visualisation, the character `Σ`
-denotes the alphabet of tokens.
+* NFA transitions either apply to a set of tokens, or to all tokens
+  *except* a specified set. In the visualisation, the character `Σ`
+  denotes the alphabet of tokens.
 
 ## Example
 
