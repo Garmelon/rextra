@@ -26,27 +26,30 @@ import           Rextra.Util
 
 -- | Instances of this type class must fulfill the following rules:
 --
--- * The return value of 'asLabel' must never be an empty string.
+-- * The return value of 'asNodeLabel' must never be an empty string.
 --
--- * @a == b@ is equivalent to @'asLabel' a == 'asLabel' b@.
+-- * @a == b@ is equivalent to @'asEdgeLabel' a == 'asEdgeLabel' b@.
 class AsLabel a where
-  asLabel :: a -> String
+  asNodeLabel :: a -> String
+  asEdgeLabel :: a -> String
+  asEdgeLabel = asNodeLabel
 
 instance AsLabel Int where
-  asLabel = show
+  asNodeLabel = show
 
 instance AsLabel Char where
-  asLabel c = [c]
+  asNodeLabel c = [c]
 
 -- | __Warning__: Only use this if you know that no empty strings
 -- occur in your automaton's state names!
 instance AsLabel [Char] where
-  asLabel = id
+  asNodeLabel = id
 
 instance AsLabel a => AsLabel (Set.Set a) where
-  asLabel s =
-    let sublabels = map asLabel $ Set.elems s
-    in  "{" ++ intercalate "," sublabels ++ "}"
+  asNodeLabel s = "{" ++ asEdgeLabel s ++ "}"
+  asEdgeLabel s =
+    let sublabels = map asNodeLabel $ Set.elems s
+    in  intercalate "," sublabels
 
 {-
  - Displaying or saving 'DotGraph's
@@ -69,7 +72,7 @@ saveDotAsPng = saveDot Png
 -- be invisible in the displayed graph.
 nodes :: (AsLabel s) => Fa state s t -> [(String, Bool)]
 nodes a =
-  let normalNodes = map (\s -> (asLabel s, True)) $ Set.toList $ states a
+  let normalNodes = map (\s -> (asNodeLabel s, True)) $ Set.toList $ states a
       entryNode   = ("", False)
   in entryNode : normalNodes
 
@@ -77,14 +80,14 @@ nodes a =
 -- the applicative instance instead :D
 edges :: (Ord s, AsLabel s)
       => Fa state s t -> (state s t -> [(String, s)]) -> [(String, String, String)]
-edges a f = ("", asLabel $ entryState a, "") : do
+edges a f = ("", asNodeLabel $ entryState a, "") : do
   from        <- Set.toList $ states a
   (label, to) <- f $ getState a from
-  pure (asLabel from, asLabel to, label)
+  pure (asNodeLabel from, asNodeLabel to, label)
 
 faParams :: (AsLabel s) => Fa state s t -> GraphvizParams String Bool String () Bool
 faParams a =
-  let acceptingStates = Set.map asLabel $ exitStates a
+  let acceptingStates = Set.map asNodeLabel $ exitStates a
 
       formatNode (_, False) = [style invis] -- See comment on 'nodes'
       formatNode (s,  True) =
@@ -104,7 +107,7 @@ faToDot f a = graphElemsToDot (faParams a) (nodes a) (edges a f)
  -}
 
 dfaShowNoDefault :: (Ord s, Ord t, AsLabel t) => Dfa.State s t -> [(String, s)]
-dfaShowNoDefault = map (\(s, t) -> (asLabel t, s)) . Map.assocs . Dfa.transitionsByState
+dfaShowNoDefault = map (\(s, t) -> (asEdgeLabel t, s)) . Map.assocs . Dfa.transitionsByState
 
 dfaShowAll :: (Ord s, Ord t, AsLabel t) => Dfa.State s t -> [(String, s)]
 dfaShowAll s = ("*", Dfa.defaultTransition s) : dfaShowNoDefault s
@@ -119,7 +122,7 @@ dfaShowTokens :: (Ord s, Ord t, AsLabel t) => Set.Set t -> Dfa.State s t -> [(St
 dfaShowTokens tokens state =
   let bareEdges    = Map.assocs $ Map.fromSet (Dfa.stateTransition state) tokens
       groupedEdges = Map.assocs $ groupByFirst $ map swap bareEdges
-  in  map (\(s, t) -> (asLabel t, s)) groupedEdges
+  in  map (\(s, t) -> (asEdgeLabel t, s)) groupedEdges
 
 dfaToDotWithTokens :: (Ord s, AsLabel s, Ord t, AsLabel t) => [t] -> Dfa.Dfa s t -> DotGraph String
 dfaToDotWithTokens tokenList = faToDot $ dfaShowTokens $ Set.fromList tokenList
@@ -129,10 +132,10 @@ dfaToDotWithTokens tokenList = faToDot $ dfaShowTokens $ Set.fromList tokenList
  -}
 
 showCondition :: (AsLabel t) => Nfa.TransitionCondition t -> String
-showCondition (Nfa.Only s)      = asLabel s
-showCondition (Nfa.AllExcept s)
-  | Set.null s = "Σ"
-  | otherwise  = "Σ\\" ++ asLabel s
+showCondition (Nfa.Only t) = asEdgeLabel t
+showCondition (Nfa.AllExcept t)
+  | Set.null t = "Σ"
+  | otherwise  = "Σ\\" ++ asNodeLabel t
 
 nfaShow :: (AsLabel t) => Nfa.State s t -> [(String, s)]
 nfaShow state =
