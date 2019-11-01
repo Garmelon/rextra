@@ -119,28 +119,28 @@ groupByBehaviour mapping = groupByFirst . map (\s -> (mapping Map.! s, s)) . Set
 groupAllByBehaviour :: (Ord s, Ord t)
                     => Map.Map s (Behaviour s t)
                     -> Partition s
-                    -> Map.Map (Behaviour s t) (EquivalenceGroup s)
-groupAllByBehaviour mapping = Map.unions . map (groupByBehaviour mapping) . Set.toList
+                    -> Map.Map (EquivalenceGroup s) (Behaviour s t)
+groupAllByBehaviour mapping = Map.fromList
+                            . map swap
+                            . concatMap (Map.assocs . groupByBehaviour mapping)
+                            . Set.toList
 
 findNewBehaviourGrouping :: (Ord s, Ord t)
                          => Map.Map s (Dfa.State s t)
                          -> Partition s
-                         -> Map.Map (Behaviour s t) (EquivalenceGroup s)
+                         -> Map.Map (EquivalenceGroup s) (Behaviour s t)
 findNewBehaviourGrouping statemap partition =
   let mapping    = partitionToMap partition
       behaviours = findBehaviours mapping statemap
   in  groupAllByBehaviour behaviours partition
 
-groupingToPartition :: (Ord s) => Map.Map (Behaviour s t) (EquivalenceGroup s) -> Partition s
-groupingToPartition = Set.fromList . Map.elems
-
 findGroupingFixpoint :: (Ord s, Ord t)
                      => Map.Map s (Dfa.State s t)
                      -> Partition s
-                     -> Map.Map (Behaviour s t) (EquivalenceGroup s)
+                     -> Map.Map (EquivalenceGroup s) (Behaviour s t)
 findGroupingFixpoint statemap partition =
   let newGrouping  = findNewBehaviourGrouping statemap partition
-      newPartition = groupingToPartition newGrouping
+      newPartition = Map.keysSet newGrouping
   in  if partition == newPartition
       then newGrouping
       else findGroupingFixpoint statemap newPartition
@@ -154,7 +154,6 @@ minimizeDfa :: (Ord s, Ord t) => Dfa.Dfa s t -> Dfa.Dfa (EquivalenceGroup s) t
 minimizeDfa a =
   let grouping      = findGroupingFixpoint (stateMap a) (initialPartition a)
       mapping       = partitionToMap $ groupingToPartition grouping
-      newStateMap   = Map.fromList $ map swap $ Map.assocs grouping
       newEntryState = mapping Map.! entryState a
       newExitStates = Set.map (mapping Map.!) (exitStates a)
-  in  fromJust $ fa newStateMap newEntryState newExitStates
+  in  fromJust $ fa grouping newEntryState newExitStates
