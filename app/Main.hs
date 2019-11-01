@@ -1,6 +1,4 @@
 module Main where
 
-import Rextra.Rextra (rextra)
-
 main :: IO ()
-main = rextra
+main = putStrLn "Nothing to see here"

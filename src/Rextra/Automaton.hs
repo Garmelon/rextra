@@ -153,7 +153,7 @@ initialPartition a =
 minimizeDfa :: (Ord s, Ord t) => Dfa.Dfa s t -> Dfa.Dfa (EquivalenceGroup s) t
 minimizeDfa a =
   let grouping      = findGroupingFixpoint (stateMap a) (initialPartition a)
-      mapping       = partitionToMap $ groupingToPartition grouping
+      mapping       = partitionToMap $ Map.keysSet grouping
       newEntryState = mapping Map.! entryState a
       newExitStates = Set.map (mapping Map.!) (exitStates a)
   in  fromJust $ fa grouping newEntryState newExitStates
