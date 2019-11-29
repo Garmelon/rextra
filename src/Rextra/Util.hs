@@ -7,7 +7,6 @@ module Rextra.Util
 
 import           Control.Monad
 import           Control.Monad.Trans.State
-import           Data.List
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
